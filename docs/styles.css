@@ -116,6 +116,12 @@ p, li {
   opacity: 1;
 }
 
+.hero-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .cta {
   display: inline-flex;
   align-items: center;
@@ -132,6 +138,18 @@ p, li {
 
 .cta:hover {
   background: var(--accent-deep);
+}
+
+.cta.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 2px solid var(--accent);
+  box-shadow: none;
+}
+
+.cta.secondary:hover {
+  background: var(--accent);
+  color: #fff;
 }
 
 .hero-badges {

@@ -75,6 +75,10 @@ def list_releases():
     return files
 
 
+def web_app_available():
+    return (ROOT / 'appli' / 'index.html').exists()
+
+
 def list_screenshots():
     screenshot_dir = ROOT / 'screenshots'
     if not screenshot_dir.exists():
@@ -96,7 +100,7 @@ SCREENSHOT_CAPTIONS = {
 }
 
 
-def build_html(version, releases):
+def build_html(version, releases, web_app):
     updated = datetime.now().strftime('%Y-%m-%d %H:%M')
     if releases:
         latest_date = parse_build_timestamp(releases[0].name)
@@ -142,6 +146,24 @@ def build_html(version, releases):
     latest_release_href = f'releases/{releases[0].name}' if releases else '#builds'
     latest_release_label = 'Télécharger la dernière version' if releases else 'Aucun build pour le moment'
 
+    web_app_cta = (
+        '<a class="cta secondary" href="appli/">🌐 Jouer dans le navigateur</a>'
+        if web_app else ''
+    )
+
+    if web_app:
+        web_app_section = '''<section>
+      <h2>Utiliser la version web</h2>
+      <p>Pas envie d'installer un APK ? L'appli tourne aussi directement dans le navigateur, sans rien installer.</p>
+      <ul>
+        <li><a href="appli/">Ouvrir l'appli web</a> — fonctionne sur ordinateur, tablette ou mobile.</li>
+        <li>Les tournois sont sauvegardés dans le navigateur utilisé (pas de compte, pas de synchronisation entre appareils).</li>
+        <li>Ajoutez la page à votre écran d'accueil pour un accès en un tap, comme une vraie appli.</li>
+      </ul>
+    </section>'''
+    else:
+        web_app_section = ''
+
     return f'''<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -162,7 +184,10 @@ def build_html(version, releases):
           <p class="eyebrow">Cap Fun · Application mobile</p>
           <h1>Tournois de pétanque, sans prise de tête !</h1>
           <p class="subtitle">L'appli qui tire les équipes au sort, chronomètre les parties et calcule le classement — pendant que vous, vous jouez aux boules.</p>
-          <a class="cta" href="{latest_release_href}" download>🎯 {latest_release_label}</a>
+          <div class="hero-ctas">
+            <a class="cta" href="{latest_release_href}" download>🎯 {latest_release_label}</a>
+            {web_app_cta}
+          </div>
         </div>
       </div>
       <div class="hero-badges">
@@ -204,6 +229,8 @@ def build_html(version, releases):
       </ul>
     </section>
 
+    {web_app_section}
+
     <section class="callout">
       <h2>Mettre à jour cette page</h2>
       <p>Depuis la racine du projet, lancez :</p>
@@ -225,9 +252,13 @@ def build_html(version, releases):
 def main():
     version = parse_version()
     releases = list_releases()
-    html = build_html(version, releases)
+    web_app = web_app_available()
+    html = build_html(version, releases, web_app)
     OUTPUT.write_text(html, encoding='utf-8')
-    print(f'Généré {OUTPUT.relative_to(ROOT)} — {len(releases)} build(s), {len(list_screenshots())} capture(s)')
+    print(
+        f'Généré {OUTPUT.relative_to(ROOT)} — {len(releases)} build(s), '
+        f'{len(list_screenshots())} capture(s), appli web {"présente" if web_app else "absente"}'
+    )
 
 
 if __name__ == '__main__':

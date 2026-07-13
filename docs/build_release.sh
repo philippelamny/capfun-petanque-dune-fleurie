@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds a release APK, copies it into docs/releases with a versioned,
-# timestamped name, then regenerates docs/index.html so the download link
-# on the site always points at the latest build.
+# timestamped name, builds the web app into docs/appli, then regenerates
+# docs/index.html so the download link and the "play in browser" link
+# always point at the latest build.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +20,16 @@ flutter build apk --release
 
 cp "build/app/outputs/flutter-apk/app-release.apk" "docs/releases/${APK_NAME}"
 echo "==> Copied to docs/releases/${APK_NAME}"
+
+REPO_NAME=$(basename -s .git "$(git config --get remote.origin.url)")
+
+echo "==> flutter build web --release"
+flutter build web --release --base-href "/${REPO_NAME}/appli/"
+
+rm -rf docs/appli
+mkdir -p docs/appli
+cp -r build/web/. docs/appli/
+echo "==> Copied web app to docs/appli/"
 
 cd docs
 python3 generate_site.py
