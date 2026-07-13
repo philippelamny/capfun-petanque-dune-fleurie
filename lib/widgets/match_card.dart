@@ -9,11 +9,25 @@ class MatchCard extends StatelessWidget {
     required this.match,
     required this.tournament,
     required this.onTap,
+    this.standings,
   });
 
   final PetanqueMatch match;
   final Tournament tournament;
   final VoidCallback onTap;
+
+  /// Current standings, used to show each team's rank and points below its
+  /// name. Pass null (or leave unset) to hide that line — e.g. during round
+  /// 1, before any result gives the ranking meaning.
+  final List<TeamStanding>? standings;
+
+  String? _rankLabel(String teamId) {
+    final list = standings;
+    if (list == null) return null;
+    final index = list.indexWhere((s) => s.team.id == teamId);
+    if (index == -1) return null;
+    return 'Rang ${index + 1} · ${list[index].pointsFor} pts';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +36,7 @@ class MatchCard extends StatelessWidget {
     final teamB = match.teamBId != null ? tournament.teamById(match.teamBId!) : null;
 
     if (match.isBye) {
+      final rankLabel = _rankLabel(teamA.id);
       return Card(
         child: ListTile(
           leading: CircleAvatar(
@@ -29,13 +44,19 @@ class MatchCard extends StatelessWidget {
             child: Icon(Icons.spa_outlined, color: scheme.onTertiaryContainer),
           ),
           title: Text(teamA.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-          subtitle: const Text('Exempt — victoire automatique'),
+          subtitle: Text(
+            rankLabel != null ? '$rankLabel\nExempt — victoire automatique' : 'Exempt — victoire automatique',
+          ),
+          isThreeLine: rankLabel != null,
         ),
       );
     }
 
     final aWon = match.winnerId == teamA.id;
     final bWon = match.winnerId == teamB!.id;
+    final rankLabelA = _rankLabel(teamA.id);
+    final rankLabelB = _rankLabel(teamB.id);
+    final captionStyle = TextStyle(fontSize: 11.5, color: scheme.onSurface.withValues(alpha: 0.55));
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -46,15 +67,22 @@ class MatchCard extends StatelessWidget {
           child: Column(
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(
-                    child: Text(
-                      teamA.name,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: aWon ? FontWeight.w800 : FontWeight.w500,
-                        color: aWon ? scheme.primary : scheme.onSurface,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          teamA.name,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: aWon ? FontWeight.w800 : FontWeight.w500,
+                            color: aWon ? scheme.primary : scheme.onSurface,
+                          ),
+                        ),
+                        if (rankLabelA != null) Text(rankLabelA, style: captionStyle),
+                      ],
                     ),
                   ),
                   _ScorePill(value: match.finished ? '${match.scoreA}' : '–', highlight: aWon),
@@ -64,14 +92,20 @@ class MatchCard extends StatelessWidget {
                   ),
                   _ScorePill(value: match.finished ? '${match.scoreB}' : '–', highlight: bWon),
                   Expanded(
-                    child: Text(
-                      teamB.name,
-                      textAlign: TextAlign.end,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: bWon ? FontWeight.w800 : FontWeight.w500,
-                        color: bWon ? scheme.primary : scheme.onSurface,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          teamB.name,
+                          textAlign: TextAlign.end,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: bWon ? FontWeight.w800 : FontWeight.w500,
+                            color: bWon ? scheme.primary : scheme.onSurface,
+                          ),
+                        ),
+                        if (rankLabelB != null) Text(rankLabelB, style: captionStyle, textAlign: TextAlign.end),
+                      ],
                     ),
                   ),
                 ],

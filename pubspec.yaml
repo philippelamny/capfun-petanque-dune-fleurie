@@ -62,6 +62,11 @@ flutter_launcher_icons:
   adaptive_icon_background: "#FBF3E4"
   adaptive_icon_foreground: "assets/logo/capfun_petanque_icon.png"
   remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/logo/capfun_petanque_icon.png"
+    background_color: "#FBF3E4"
+    theme_color: "#E4231F"
 
 flutter_native_splash:
   color: "#FBF3E4"

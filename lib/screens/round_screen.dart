@@ -66,9 +66,24 @@ class _RoundScreenState extends State<RoundScreen> {
     final round = tournament.currentRound!;
     final roundNumber = round.roundNumber;
     final canAdvance = store.canAdvance(tournament);
+    // Ranks only mean something once round 1 has produced results.
+    final standings = roundNumber >= 2 ? tournament.computeStandings() : null;
 
     return Scaffold(
-      appBar: AppBar(title: Text('${tournament.name} — Round $roundNumber / 3')),
+      appBar: AppBar(
+        title: Text('${tournament.name} — Round $roundNumber / 3'),
+        actions: [
+          if (roundNumber >= 2)
+            IconButton(
+              icon: const Icon(Icons.leaderboard_outlined),
+              tooltip: 'Classement',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => StandingsScreen(tournamentId: tournament.id)),
+              ),
+            ),
+        ],
+      ),
       body: Column(
         children: [
           if (round.endsAt != null) CountdownBanner(endsAt: round.endsAt!),
@@ -82,6 +97,7 @@ class _RoundScreenState extends State<RoundScreen> {
                   match: match,
                   tournament: tournament,
                   onTap: () => _openScoreDialog(store, tournament, match.id),
+                  standings: standings,
                 );
               },
             ),
