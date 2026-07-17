@@ -57,4 +57,32 @@ class StorageService {
     final data = jsonEncode(tournaments.map((t) => t.toJson()).toList());
     await _write(data);
   }
+
+  static const _firstRoundModeKey = 'default_first_round_mode';
+  static const _numberOfRoundsKey = 'default_number_of_rounds';
+
+  /// Last first-round mode and round count chosen when creating a
+  /// tournament, so the create screen can default to them next time.
+  Future<({FirstRoundMode firstRoundMode, int numberOfRounds})> loadDefaults() async {
+    final prefs = await SharedPreferences.getInstance();
+    final modeName = prefs.getString(_firstRoundModeKey);
+    final mode = FirstRoundMode.values.firstWhere(
+      (m) => m.name == modeName,
+      orElse: () => FirstRoundMode.random,
+    );
+    final rounds = prefs.getInt(_numberOfRoundsKey) ?? kDefaultRounds;
+    return (
+      firstRoundMode: mode,
+      numberOfRounds: rounds.clamp(kMinRounds, kMaxRounds),
+    );
+  }
+
+  Future<void> saveDefaults({
+    required FirstRoundMode firstRoundMode,
+    required int numberOfRounds,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_firstRoundModeKey, firstRoundMode.name);
+    await prefs.setInt(_numberOfRoundsKey, numberOfRounds);
+  }
 }

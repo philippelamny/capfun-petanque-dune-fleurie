@@ -48,10 +48,10 @@ class _RoundScreenState extends State<RoundScreen> {
   }
 
   Future<void> _advance(TournamentStore store, Tournament tournament) async {
-    final wasRound3 = tournament.status == TournamentStatus.round3;
+    final wasLastRound = tournament.currentRound!.roundNumber == tournament.numberOfRounds;
     await store.advanceRound(tournament.id);
     if (!mounted) return;
-    if (wasRound3) {
+    if (wasLastRound) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => StandingsScreen(tournamentId: tournament.id)),
@@ -65,13 +65,15 @@ class _RoundScreenState extends State<RoundScreen> {
     final tournament = store.tournamentById(widget.tournamentId);
     final round = tournament.currentRound!;
     final roundNumber = round.roundNumber;
+    final totalRounds = tournament.numberOfRounds;
     final canAdvance = store.canAdvance(tournament);
+    final scheme = Theme.of(context).colorScheme;
     // Ranks only mean something once round 1 has produced results.
     final standings = roundNumber >= 2 ? tournament.computeStandings() : null;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('${tournament.name} — Round $roundNumber / 3'),
+        title: Text('${tournament.name} — Round $roundNumber / $totalRounds'),
         actions: [
           if (roundNumber >= 2)
             IconButton(
@@ -86,7 +88,13 @@ class _RoundScreenState extends State<RoundScreen> {
       ),
       body: Column(
         children: [
-          if (round.endsAt != null) CountdownBanner(endsAt: round.endsAt!),
+          if (round.startedAt == null)
+            _StartRoundBanner(
+              onStart: () => store.startRoundTimer(tournament.id),
+              scheme: scheme,
+            )
+          else if (round.endsAt != null)
+            CountdownBanner(endsAt: round.endsAt!),
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
@@ -106,13 +114,49 @@ class _RoundScreenState extends State<RoundScreen> {
             minimum: const EdgeInsets.all(16),
             child: FilledButton.icon(
               onPressed: canAdvance ? () => _advance(store, tournament) : null,
-              icon: Icon(roundNumber == 3 ? Icons.emoji_events : Icons.arrow_forward),
+              icon: Icon(roundNumber == totalRounds ? Icons.emoji_events : Icons.arrow_forward),
               label: Text(
                 canAdvance
-                    ? (roundNumber == 3 ? 'Terminer le tournoi et voir le classement' : 'Passer au round ${roundNumber + 1}')
+                    ? (roundNumber == totalRounds
+                        ? 'Terminer le tournoi et voir le classement'
+                        : 'Passer au round ${roundNumber + 1}')
                     : 'Entrez tous les scores pour continuer',
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StartRoundBanner extends StatelessWidget {
+  const _StartRoundBanner({required this.onStart, required this.scheme});
+
+  final VoidCallback onStart;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      color: scheme.primaryContainer,
+      child: Row(
+        children: [
+          Icon(Icons.timer_outlined, color: scheme.onPrimaryContainer),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              "Le décompte n'a pas encore démarré",
+              style: TextStyle(color: scheme.onPrimaryContainer, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.icon(
+            onPressed: onStart,
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Démarrer'),
           ),
         ],
       ),

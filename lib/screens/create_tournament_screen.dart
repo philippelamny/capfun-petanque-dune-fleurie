@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/tournament.dart';
 import '../providers/tournament_store.dart';
 import 'registration_screen.dart';
 
@@ -14,9 +15,23 @@ class CreateTournamentScreen extends StatefulWidget {
 class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
   final _nameController = TextEditingController();
   int _duration = 35;
+  late FirstRoundMode _firstRoundMode;
+  late int _numberOfRounds;
   final _formKey = GlobalKey<FormState>();
+  bool _initializedDefaults = false;
 
   static const _presets = [25, 35, 45];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initializedDefaults) {
+      final store = context.read<TournamentStore>();
+      _firstRoundMode = store.lastFirstRoundMode;
+      _numberOfRounds = store.lastNumberOfRounds;
+      _initializedDefaults = true;
+    }
+  }
 
   @override
   void dispose() {
@@ -30,6 +45,8 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
     final tournament = await store.createTournament(
       name: _nameController.text.trim(),
       matchDurationMinutes: _duration,
+      firstRoundMode: _firstRoundMode,
+      numberOfRounds: _numberOfRounds,
     );
     if (!mounted) return;
     Navigator.pushReplacement(
@@ -60,7 +77,7 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                   const SizedBox(width: 14),
                   Expanded(
                     child: Text(
-                      'Un nouveau tournoi de pétanque en 3 rounds !',
+                      'Un nouveau tournoi de pétanque en $_numberOfRounds manches !',
                       style: TextStyle(fontSize: 15, color: scheme.onSurface.withValues(alpha: 0.75)),
                     ),
                   ),
@@ -117,6 +134,63 @@ class _CreateTournamentScreenState extends State<CreateTournamentScreen> {
                           ],
                         ),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text('PREMIER TOUR',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    color: scheme.onSurface.withValues(alpha: 0.55),
+                  )),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Tirage au sort'),
+                        selected: _firstRoundMode == FirstRoundMode.random,
+                        onSelected: (_) => setState(() => _firstRoundMode = FirstRoundMode.random),
+                      ),
+                      ChoiceChip(
+                        label: const Text("Ordre d'inscription"),
+                        selected: _firstRoundMode == FirstRoundMode.registrationOrder,
+                        onSelected: (_) => setState(() => _firstRoundMode = FirstRoundMode.registrationOrder),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text('NOMBRE DE MANCHES',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    color: scheme.onSurface.withValues(alpha: 0.55),
+                  )),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      for (var n = kMinRounds; n <= kMaxRounds; n++)
+                        ChoiceChip(
+                          label: Text('$n'),
+                          selected: _numberOfRounds == n,
+                          onSelected: (_) => setState(() => _numberOfRounds = n),
+                        ),
                     ],
                   ),
                 ),

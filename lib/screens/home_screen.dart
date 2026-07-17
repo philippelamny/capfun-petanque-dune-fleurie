@@ -14,10 +14,7 @@ class HomeScreen extends StatelessWidget {
   void _openTournament(BuildContext context, Tournament tournament) {
     final Widget screen = switch (tournament.status) {
       TournamentStatus.registration => RegistrationScreen(tournamentId: tournament.id),
-      TournamentStatus.round1 ||
-      TournamentStatus.round2 ||
-      TournamentStatus.round3 =>
-        RoundScreen(tournamentId: tournament.id),
+      TournamentStatus.playing => RoundScreen(tournamentId: tournament.id),
       TournamentStatus.finished => StandingsScreen(tournamentId: tournament.id),
     };
     Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
@@ -152,7 +149,7 @@ class _TournamentCard extends StatelessWidget {
                           style: TextStyle(fontSize: 13, color: scheme.onSurface.withValues(alpha: 0.6)),
                         ),
                         const SizedBox(width: 10),
-                        _StatusChip(status: tournament.status),
+                        _StatusChip(tournament: tournament),
                       ],
                     ),
                   ],
@@ -172,24 +169,26 @@ class _TournamentCard extends StatelessWidget {
 
   Color _statusColor(ColorScheme scheme, TournamentStatus status) => switch (status) {
         TournamentStatus.registration => scheme.secondary,
-        TournamentStatus.round1 || TournamentStatus.round2 || TournamentStatus.round3 => scheme.primary,
+        TournamentStatus.playing => scheme.primary,
         TournamentStatus.finished => scheme.tertiary,
       };
 }
 
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
+  const _StatusChip({required this.tournament});
 
-  final TournamentStatus status;
+  final Tournament tournament;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final (label, bg, fg) = switch (status) {
+    final (label, bg, fg) = switch (tournament.status) {
       TournamentStatus.registration => ('Inscriptions', scheme.secondaryContainer, scheme.onSecondaryContainer),
-      TournamentStatus.round1 => ('Round 1 / 3', scheme.primaryContainer, scheme.onPrimaryContainer),
-      TournamentStatus.round2 => ('Round 2 / 3', scheme.primaryContainer, scheme.onPrimaryContainer),
-      TournamentStatus.round3 => ('Round 3 / 3', scheme.primaryContainer, scheme.onPrimaryContainer),
+      TournamentStatus.playing => (
+          'Round ${tournament.currentRound?.roundNumber ?? 1} / ${tournament.numberOfRounds}',
+          scheme.primaryContainer,
+          scheme.onPrimaryContainer,
+        ),
       TournamentStatus.finished => ('Terminé 🏆', scheme.tertiaryContainer, scheme.onTertiaryContainer),
     };
     return Container(

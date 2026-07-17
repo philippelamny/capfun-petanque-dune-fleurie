@@ -15,7 +15,7 @@ Tournament _tournamentAtRound(int roundNumber) {
     name: 'Test Cup',
     createdAt: DateTime(2026, 1, 1),
     teams: [for (var i = 0; i < 4; i++) Team(id: 'team$i', name: 'Team $i')],
-    status: TournamentStatus.round1,
+    status: TournamentStatus.playing,
   );
 
   final round1 = pairing.generateRound1(tournament);
@@ -25,9 +25,9 @@ Tournament _tournamentAtRound(int roundNumber) {
   }
 
   if (roundNumber >= 2) {
-    final round2 = pairing.generateRound2(tournament);
+    final round2 = pairing.generateRound(tournament, roundNumber: 2);
     tournament.rounds.add(Round(roundNumber: 2, matches: round2, durationMinutes: 35));
-    tournament.status = TournamentStatus.round2;
+    tournament.status = TournamentStatus.playing;
   }
 
   return tournament;

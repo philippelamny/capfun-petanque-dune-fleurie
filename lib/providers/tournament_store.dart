@@ -28,10 +28,15 @@ class TournamentStore extends ChangeNotifier {
 
   List<Tournament> tournaments = [];
   bool loading = true;
+  FirstRoundMode lastFirstRoundMode = FirstRoundMode.random;
+  int lastNumberOfRounds = kDefaultRounds;
 
   Future<void> init() async {
     await _notifications.init();
     tournaments = await _storage.loadAll();
+    final defaults = await _storage.loadDefaults();
+    lastFirstRoundMode = defaults.firstRoundMode;
+    lastNumberOfRounds = defaults.numberOfRounds;
     loading = false;
     notifyListeners();
   }
@@ -47,14 +52,21 @@ class TournamentStore extends ChangeNotifier {
   Future<Tournament> createTournament({
     required String name,
     int matchDurationMinutes = 35,
+    FirstRoundMode firstRoundMode = FirstRoundMode.random,
+    int numberOfRounds = kDefaultRounds,
   }) async {
     final tournament = Tournament(
       id: _uuid.v4(),
       name: name,
       matchDurationMinutes: matchDurationMinutes,
       createdAt: DateTime.now(),
+      firstRoundMode: firstRoundMode,
+      numberOfRounds: numberOfRounds,
     );
     tournaments.add(tournament);
+    lastFirstRoundMode = firstRoundMode;
+    lastNumberOfRounds = numberOfRounds;
+    await _storage.saveDefaults(firstRoundMode: firstRoundMode, numberOfRounds: numberOfRounds);
     await _persist();
     return tournament;
   }
@@ -131,6 +143,18 @@ class TournamentStore extends ChangeNotifier {
     await _persist();
   }
 
+  /// Starts the countdown for the current round. Rounds are generated with
+  /// no `startedAt` so the organizer can show the pairings and get teams to
+  /// their terrain before the clock actually starts.
+  Future<void> startRoundTimer(String tournamentId) async {
+    final tournament = tournamentById(tournamentId);
+    final round = tournament.currentRound;
+    if (round == null || round.startedAt != null) return;
+    round.startedAt = DateTime.now();
+    await _notifications.scheduleRoundReminders(roundEnd: round.endsAt!);
+    await _persist();
+  }
+
   bool canAdvance(Tournament tournament) {
     final round = tournament.currentRound;
     if (round == null) return false;
@@ -142,20 +166,14 @@ class TournamentStore extends ChangeNotifier {
     final tournament = tournamentById(tournamentId);
     if (!canAdvance(tournament)) return;
 
-    switch (tournament.status) {
-      case TournamentStatus.round1:
-        final matches = _pairing.generateRound2(tournament);
-        await _startRound(tournament, 2, matches);
-      case TournamentStatus.round2:
-        final matches = _pairing.generateRound3(tournament);
-        await _startRound(tournament, 3, matches);
-      case TournamentStatus.round3:
-        tournament.status = TournamentStatus.finished;
-        await _notifications.cancelRoundReminders();
-        await _persist();
-      case TournamentStatus.registration:
-      case TournamentStatus.finished:
-        break;
+    final roundNumber = tournament.currentRound!.roundNumber;
+    if (roundNumber < tournament.numberOfRounds) {
+      final matches = _pairing.generateRound(tournament, roundNumber: roundNumber + 1);
+      await _startRound(tournament, roundNumber + 1, matches);
+    } else {
+      tournament.status = TournamentStatus.finished;
+      await _notifications.cancelRoundReminders();
+      await _persist();
     }
   }
 
@@ -168,11 +186,9 @@ class TournamentStore extends ChangeNotifier {
       roundNumber: roundNumber,
       matches: matches,
       durationMinutes: tournament.matchDurationMinutes,
-      startedAt: DateTime.now(),
     );
     tournament.rounds.add(round);
-    tournament.status = TournamentStatus.values[roundNumber];
-    await _notifications.scheduleRoundReminders(roundEnd: round.endsAt!);
+    tournament.status = TournamentStatus.playing;
     await _persist();
   }
 }

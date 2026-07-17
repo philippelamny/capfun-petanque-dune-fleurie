@@ -1,7 +1,15 @@
 import 'round.dart';
 import 'team.dart';
 
-enum TournamentStatus { registration, round1, round2, round3, finished }
+enum TournamentStatus { registration, playing, finished }
+
+/// How round 1 pairings are formed: a random draw, or teams paired in the
+/// order they registered (team 1 vs team 2, team 3 vs team 4, ...).
+enum FirstRoundMode { random, registrationOrder }
+
+const int kMinRounds = 3;
+const int kMaxRounds = 8;
+const int kDefaultRounds = 3;
 
 class TeamStanding {
   final Team team;
@@ -23,6 +31,8 @@ class Tournament {
   TournamentStatus status;
   final List<Team> teams;
   final List<Round> rounds;
+  final FirstRoundMode firstRoundMode;
+  final int numberOfRounds;
 
   Tournament({
     required this.id,
@@ -32,6 +42,8 @@ class Tournament {
     this.status = TournamentStatus.registration,
     List<Team>? teams,
     List<Round>? rounds,
+    this.firstRoundMode = FirstRoundMode.random,
+    this.numberOfRounds = kDefaultRounds,
   })  : teams = teams ?? [],
         rounds = rounds ?? [];
 
@@ -108,6 +120,8 @@ class Tournament {
         'status': status.name,
         'teams': teams.map((t) => t.toJson()).toList(),
         'rounds': rounds.map((r) => r.toJson()).toList(),
+        'firstRoundMode': firstRoundMode.name,
+        'numberOfRounds': numberOfRounds,
       };
 
   factory Tournament.fromJson(Map<String, dynamic> json) => Tournament(
@@ -115,14 +129,36 @@ class Tournament {
         name: json['name'] as String,
         matchDurationMinutes: json['matchDurationMinutes'] as int? ?? 35,
         createdAt: DateTime.parse(json['createdAt'] as String),
-        status: TournamentStatus.values.byName(json['status'] as String),
+        status: _statusFromJson(json['status'] as String),
         teams: (json['teams'] as List)
             .map((t) => Team.fromJson(t as Map<String, dynamic>))
             .toList(),
         rounds: (json['rounds'] as List)
             .map((r) => Round.fromJson(r as Map<String, dynamic>))
             .toList(),
+        firstRoundMode: FirstRoundMode.values.firstWhere(
+          (m) => m.name == json['firstRoundMode'],
+          orElse: () => FirstRoundMode.random,
+        ),
+        numberOfRounds: json['numberOfRounds'] as int? ?? kDefaultRounds,
       );
+
+  /// Older saved tournaments predate the generic `playing` status and used
+  /// one enum value per round (`round1`, `round2`, `round3`); map those to
+  /// `playing` so old JSON on a user's device keeps loading.
+  static TournamentStatus _statusFromJson(String name) {
+    switch (name) {
+      case 'round1':
+      case 'round2':
+      case 'round3':
+        return TournamentStatus.playing;
+      default:
+        return TournamentStatus.values.firstWhere(
+          (s) => s.name == name,
+          orElse: () => TournamentStatus.registration,
+        );
+    }
+  }
 }
 
 String pairKey(String a, String b) {

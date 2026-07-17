@@ -6,18 +6,20 @@ import '../models/match.dart';
 import '../models/team.dart';
 import '../models/tournament.dart';
 
-/// Builds the pairings for each of the 3 rounds of a tournament.
+/// Builds the pairings for each round of a tournament.
 ///
-/// Round 1 is fully random. Rounds 2 and 3 rank teams by current standings
-/// (wins, then point difference) and pair the top half against the bottom
-/// half ("fold" pairing, best against worst). A randomized local search is
-/// used to avoid rematches (two teams that already played each other)
-/// whenever a rematch-free pairing exists.
+/// Round 1 is either a random draw or teams paired in registration order,
+/// depending on [Tournament.firstRoundMode]. From round 2 onward, teams are
+/// grouped into "score groups" by number of wins (winners with winners,
+/// losers with losers) and fold-paired within each group (best vs worst of
+/// the group). When a score group has an odd number of teams, its weakest
+/// team "floats down" and is paired against the best team of the next group
+/// down — the classic Swiss-tournament pairdown rule. A randomized local
+/// search is used to avoid rematches (two teams that already played each
+/// other) whenever a rematch-free pairing exists.
 ///
 /// Odd team counts get one team a bye each round. A team that has already
-/// had a bye is never given another one — with team count fixed for the
-/// whole tournament and only 3 rounds, there are always enough distinct
-/// teams to give each bye to a different team.
+/// had a bye is never given another one.
 class PairingService {
   final Uuid _uuid = const Uuid();
   final Random _random = Random();
@@ -25,99 +27,113 @@ class PairingService {
   static const int _searchAttempts = 400;
 
   List<PetanqueMatch> generateRound1(Tournament tournament) {
-    final pool = List<Team>.from(tournament.teams)..shuffle(_random);
-    // No history yet in round 1, so any team can take the bye.
-    final bye = pool.length.isOdd ? pool.removeLast() : null;
-    final matches = _pairSequentially(pool, roundNumber: 1, history: {});
-    if (bye != null) {
-      matches.add(_byeMatch(bye, 1));
+    final ordered = List<Team>.from(tournament.teams);
+    if (tournament.firstRoundMode == FirstRoundMode.random) {
+      ordered.shuffle(_random);
     }
+    // No history yet in round 1, so any team can take the bye; with
+    // registration order it's the last-registered team that sits out.
+    final bye = ordered.length.isOdd ? ordered.removeLast() : null;
+    final matches = [
+      for (var i = 0; i + 1 < ordered.length; i += 2)
+        PetanqueMatch(
+          id: _uuid.v4(),
+          roundNumber: 1,
+          teamAId: ordered[i].id,
+          teamBId: ordered[i + 1].id,
+        ),
+    ];
+    if (bye != null) matches.add(_byeMatch(bye, 1));
     return matches;
   }
 
-  List<PetanqueMatch> generateRound2(Tournament tournament) =>
-      _generateRankedRound(tournament, roundNumber: 2);
-
-  List<PetanqueMatch> generateRound3(Tournament tournament) =>
-      _generateRankedRound(tournament, roundNumber: 3);
-
-  // -- helpers --------------------------------------------------------
-
-  /// Ranks teams by current standings (most wins, best point difference,
-  /// first) and fold-pairs the top half against the bottom half. The team
-  /// that rests on an odd count is the weakest team that has never had a
-  /// bye before — a team can only ever sit out once across the tournament.
-  List<PetanqueMatch> _generateRankedRound(
-    Tournament tournament, {
-    required int roundNumber,
-  }) {
+  /// Generates any round from round 2 onward, pairing teams within their
+  /// current win-count group (see class doc for the pairdown rule).
+  List<PetanqueMatch> generateRound(Tournament tournament, {required int roundNumber}) {
     final standings = tournament.computeStandings();
     // Ranked strongest (most wins, best point diff) to weakest.
     final ranked = [for (final s in standings) s.team];
+    final winsById = {for (final s in standings) s.team.id: s.wins};
 
     Team? bye;
     if (ranked.length.isOdd) {
       final alreadyByed = tournament.teamsWithBye();
       final eligible = ranked.where((t) => !alreadyByed.contains(t.id)).toList();
       // `eligible` should never be empty for a valid tournament: team count
-      // is fixed for all 3 rounds, so an odd count needs at most 3 distinct
-      // bye recipients. The full `ranked` fallback only guards against that
-      // invariant somehow not holding.
+      // is fixed for the whole tournament, so an odd count needs at most as
+      // many distinct bye recipients as there are rounds. The full `ranked`
+      // fallback only guards against that invariant somehow not holding.
       final pool = eligible.isNotEmpty ? eligible : ranked;
       bye = pool.last; // weakest team among those still eligible for a bye
       ranked.remove(bye);
     }
 
     final history = tournament.playedPairKeys();
-    final matches = _foldPair(ranked, roundNumber: roundNumber, history: history);
+    final matches = _swissPair(ranked, winsById, roundNumber: roundNumber, history: history);
     if (bye != null) matches.add(_byeMatch(bye, roundNumber));
     return matches;
   }
+
+  // -- helpers --------------------------------------------------------
+
+  /// Splits [ranked] into consecutive score groups (equal win count) and
+  /// pairs within each group, floating a group's weakest team down to pair
+  /// against the best team of the next group whenever a group is odd.
+  List<PetanqueMatch> _swissPair(
+    List<Team> ranked,
+    Map<String, int> winsById, {
+    required int roundNumber,
+    required Set<String> history,
+  }) {
+    final groups = <List<Team>>[];
+    for (final team in ranked) {
+      if (groups.isNotEmpty && winsById[groups.last.first.id] == winsById[team.id]) {
+        groups.last.add(team);
+      } else {
+        groups.add([team]);
+      }
+    }
+
+    final matches = <PetanqueMatch>[];
+    Team? carry;
+    for (final group in groups) {
+      final pool = List<Team>.from(group);
+      if (carry != null) {
+        final opponent = _bestAvailable(carry, pool, history);
+        pool.remove(opponent);
+        matches.add(_makeMatch(carry, opponent, roundNumber));
+        carry = null;
+      }
+      if (pool.length.isOdd) {
+        carry = pool.removeLast(); // weakest of this group floats down
+      }
+      matches.addAll(_foldPair(pool, roundNumber: roundNumber, history: history));
+    }
+    return matches;
+  }
+
+  /// Picks the best-ranked team in [pool] (assumed sorted best to worst)
+  /// that [seeking] hasn't already played, falling back to the very best
+  /// if every candidate would be a rematch.
+  Team _bestAvailable(Team seeking, List<Team> pool, Set<String> history) {
+    for (final candidate in pool) {
+      if (!history.contains(pairKey(seeking.id, candidate.id))) return candidate;
+    }
+    return pool.first;
+  }
+
+  PetanqueMatch _makeMatch(Team a, Team b, int roundNumber) => PetanqueMatch(
+        id: _uuid.v4(),
+        roundNumber: roundNumber,
+        teamAId: a.id,
+        teamBId: b.id,
+      );
 
   PetanqueMatch _byeMatch(Team team, int roundNumber) => PetanqueMatch(
         id: _uuid.v4(),
         roundNumber: roundNumber,
         teamAId: team.id,
       );
-
-  /// Randomly shuffles [teams] and pairs them adjacently, searching for an
-  /// ordering with as few history rematches as possible.
-  List<PetanqueMatch> _pairSequentially(
-    List<Team> teams, {
-    required int roundNumber,
-    required Set<String> history,
-  }) {
-    if (teams.isEmpty) return [];
-    List<Team> best = List.of(teams)..shuffle(_random);
-    int bestConflicts = _sequentialConflicts(best, history);
-    for (var i = 0; i < _searchAttempts && bestConflicts > 0; i++) {
-      final candidate = List.of(teams)..shuffle(_random);
-      final conflicts = _sequentialConflicts(candidate, history);
-      if (conflicts < bestConflicts) {
-        bestConflicts = conflicts;
-        best = candidate;
-      }
-    }
-    return [
-      for (var i = 0; i + 1 < best.length; i += 2)
-        PetanqueMatch(
-          id: _uuid.v4(),
-          roundNumber: roundNumber,
-          teamAId: best[i].id,
-          teamBId: best[i + 1].id,
-        ),
-    ];
-  }
-
-  int _sequentialConflicts(List<Team> teams, Set<String> history) {
-    var conflicts = 0;
-    for (var i = 0; i + 1 < teams.length; i += 2) {
-      if (history.contains(pairKey(teams[i].id, teams[i + 1].id))) {
-        conflicts++;
-      }
-    }
-    return conflicts;
-  }
 
   /// Pairs the strongest half of [ranked] against the weakest half
   /// (index-for-index), searching for a rematch-free ordering of the
@@ -143,13 +159,7 @@ class PairingService {
       }
     }
     return [
-      for (var i = 0; i < upper.length; i++)
-        PetanqueMatch(
-          id: _uuid.v4(),
-          roundNumber: roundNumber,
-          teamAId: upper[i].id,
-          teamBId: bestLower[i].id,
-        ),
+      for (var i = 0; i < upper.length; i++) _makeMatch(upper[i], bestLower[i], roundNumber),
     ];
   }
 
